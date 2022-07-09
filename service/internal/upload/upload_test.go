@@ -1,7 +1,9 @@
 package upload
 
 import (
+	"bytes"
 	"io/ioutil"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -36,5 +38,32 @@ func TestUploadHandler(t *testing.T) {
 		}
 
 		require.Nil(t, deep.Equal(string(data), "Upload bad request\n"))
+	})
+
+	t.Run("Should return file not found", func(t *testing.T) {
+		body := new(bytes.Buffer)
+
+		mw := multipart.NewWriter(body)
+
+		mw.Close()
+
+		uploadCtrl := uploadHandler{
+			httpClientInstance: mockHttpClient,
+		}
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/upload", body)
+		req.Header.Add("Content-Type", mw.FormDataContentType())
+
+		rr := httptest.NewRecorder()
+
+		uploadCtrl.UploadFileHandler(rr, req)
+		res := rr.Result()
+		defer res.Body.Close()
+
+		data, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			t.Errorf("expected error to be nil got %v", err)
+		}
+
+		require.Nil(t, deep.Equal(string(data), "File not found\n"))
 	})
 }
