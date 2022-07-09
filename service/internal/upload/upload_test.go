@@ -2,42 +2,44 @@ package upload
 
 import (
 	"bytes"
-	"io/ioutil"
+	"encoding/json"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/go-test/deep"
-	"github.com/golang/mock/gomock"
+	"github.com/pitsanujiw/go-health-check/internal/errorutil"
+	"github.com/pitsanujiw/go-health-check/internal/healthcheck"
 	"github.com/stretchr/testify/require"
-
-	checker_mock "github.com/pitsanujiw/go-health-check/mocks"
 )
 
+type mockHealthcheck struct {
+	result healthcheck.Result
+}
+
+func (m *mockHealthcheck) Ping(urls []string) healthcheck.Result {
+	return m.result
+}
+
 func TestUploadHandler(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockHttpClient := checker_mock.NewMockHttpClient(ctrl)
-
 	t.Run("Should return upload bad request", func(t *testing.T) {
-		uploadCtrl := uploadHandler{
-			httpClientInstance: mockHttpClient,
-		}
+		handler := New(&mockHealthcheck{})
+
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/upload", nil)
 		rr := httptest.NewRecorder()
 
-		uploadCtrl.UploadFileHandler(rr, req)
+		handler.UploadFileHandler(rr, req)
 		res := rr.Result()
 		defer res.Body.Close()
 
-		data, err := ioutil.ReadAll(res.Body)
-		if err != nil {
-			t.Errorf("expected error to be nil got %v", err)
+		got := rr.Body.Bytes()
+		msg := errorutil.MessageError{
+			Message: "Upload bad request",
 		}
 
-		require.Nil(t, deep.Equal(string(data), "Upload bad request\n"))
+		want, _ := json.Marshal(msg)
+
+		require.Equal(t, string(got), string(want)+"\n")
 	})
 
 	t.Run("Should return file not found", func(t *testing.T) {
@@ -47,23 +49,56 @@ func TestUploadHandler(t *testing.T) {
 
 		mw.Close()
 
-		uploadCtrl := uploadHandler{
-			httpClientInstance: mockHttpClient,
-		}
+		handler := New(&mockHealthcheck{})
+
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/upload", body)
 		req.Header.Add("Content-Type", mw.FormDataContentType())
 
 		rr := httptest.NewRecorder()
 
-		uploadCtrl.UploadFileHandler(rr, req)
+		handler.UploadFileHandler(rr, req)
 		res := rr.Result()
 		defer res.Body.Close()
 
-		data, err := ioutil.ReadAll(res.Body)
-		if err != nil {
-			t.Errorf("expected error to be nil got %v", err)
+		got := rr.Body.Bytes()
+		msg := errorutil.MessageError{
+			Message: "File not found",
 		}
 
-		require.Nil(t, deep.Equal(string(data), "File not found\n"))
+		want, _ := json.Marshal(msg)
+
+		require.Equal(t, string(got), string(want)+"\n")
+	})
+
+	t.Run("Should return result ping", func(t *testing.T) {
+		body := new(bytes.Buffer)
+
+		mw := multipart.NewWriter(body)
+
+		part, _ := mw.CreateFormFile("file", "file.csv")
+		part.Write([]byte(`sample`))
+
+		mw.Close()
+
+		handler := New(&mockHealthcheck{
+			result: healthcheck.Result{},
+		})
+
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/upload", body)
+		req.Header.Add("Content-Type", mw.FormDataContentType())
+
+		rr := httptest.NewRecorder()
+
+		handler.UploadFileHandler(rr, req)
+
+		res := rr.Result()
+		defer res.Body.Close()
+
+		got := rr.Body.Bytes()
+		msg := healthcheck.Result{}
+
+		want, _ := json.Marshal(msg)
+
+		require.Equal(t, string(got), string(want)+"\n")
 	})
 }

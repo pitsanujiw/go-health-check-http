@@ -2,25 +2,55 @@ package main
 
 import (
 	"net/http"
-	"time"
+	"os"
 
-	"github.com/pitsanujiw/go-health-check/internal/checker"
+	"github.com/pitsanujiw/go-health-check/internal/healthcheck"
+	"github.com/pitsanujiw/go-health-check/internal/httpclient"
 	"github.com/pitsanujiw/go-health-check/internal/upload"
 )
 
 func main() {
-	httpClient := http.Client{
-		Timeout: 15 * time.Second,
+
+	httpClient := httpclient.New()
+
+	healthSvc := healthcheck.New(httpClient)
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = ":8080"
 	}
 
-	checkerHttpClient := checker.GetHttpClient(httpClient)
-
+	mux := http.NewServeMux()
 	// Upload route
-	uploadInstance := upload.GetUploadHandler(checkerHttpClient)
+	uploadHandler := upload.New(healthSvc)
 
-	http.HandleFunc("/api/v1/upload", uploadInstance.UploadFileHandler)
+	mux.Handle("/api/v1/upload", cors(http.HandlerFunc(uploadHandler.UploadFileHandler)))
 
 	//Listen on port 8080
-	http.ListenAndServe("0.0.0.0:9999", nil)
+	http.ListenAndServe(port, mux)
 
+}
+
+func cors(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := r.Header.Get("Origin")
+
+		if r.Method == http.MethodOptions {
+			if origin != "http://localhost:3000" {
+				http.Error(w, "Forbidden", http.StatusForbidden)
+				return
+			}
+		
+			w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
+			w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+			w.Header().Set("Access-Control-Max-Age", "5") // 5 seconds
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
+		h.ServeHTTP(w, r)
+	})
 }

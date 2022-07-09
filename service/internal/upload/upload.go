@@ -5,43 +5,36 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/pitsanujiw/go-health-check/internal/checker"
+	"github.com/pitsanujiw/go-health-check/internal/errorutil"
+	"github.com/pitsanujiw/go-health-check/internal/healthcheck"
 	"github.com/pitsanujiw/go-health-check/internal/reader"
 )
 
 type uploadHandler struct {
-	httpClientInstance checker.HttpClient
+	healthcheckSrv healthcheck.Healthchecker
 }
 
 type UploadHandler interface {
 	UploadFileHandler(w http.ResponseWriter, r *http.Request)
 }
 
-func GetUploadHandler(httpClient checker.HttpClient) *uploadHandler {
+func New(checkerSvc healthcheck.Healthchecker) *uploadHandler {
 	return &uploadHandler{
-		httpClientInstance: httpClient,
+		healthcheckSrv: checkerSvc,
 	}
-}
-
-func setupCORS(w *http.ResponseWriter, req *http.Request) {
-	(*w).Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
-	(*w).Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
-	(*w).Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
 }
 
 func (u *uploadHandler) UploadFileHandler(w http.ResponseWriter, r *http.Request) {
-	setupCORS(&w, r)
-	if r.Method == http.MethodOptions {
-		return
-	}
-
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusBadRequest)
 
-		fmt.Fprintf(w, "Upload bad request\n")
+		json.NewEncoder(w).Encode(errorutil.MessageError{
+			Message: "Upload bad request",
+		})
 
 		return
 	}
+
 	// Maximum upload of 10 MB files
 	r.ParseMultipartForm(10 << 20)
 
@@ -52,7 +45,10 @@ func (u *uploadHandler) UploadFileHandler(w http.ResponseWriter, r *http.Request
 		fmt.Println(err)
 
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "File not found\n")
+		json.NewEncoder(w).Encode(errorutil.MessageError{
+			Message: "File not found",
+		})
+
 		return
 	}
 
@@ -61,11 +57,14 @@ func (u *uploadHandler) UploadFileHandler(w http.ResponseWriter, r *http.Request
 	urls, err := reader.ReadFile(file)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "Cannot read file\n")
+		json.NewEncoder(w).Encode(errorutil.MessageError{
+			Message: "Cannot read file",
+		})
+
 		return
 	}
 
-	result := u.httpClientInstance.Ping(urls)
+	result := u.healthcheckSrv.Ping(urls)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
