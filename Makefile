@@ -1,6 +1,6 @@
 SHELL = /bin/bash
 test-all:
-	cd ./service && cgo test -v ./... -cover
+	cd ./service && go test -v ./... -cover
 install-client:
 	cd client && yarn
 clean-up:
