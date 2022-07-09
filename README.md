@@ -37,3 +37,7 @@ a 2nd terminal
 ```
 
 and a file for test have on `test_file` folder
+
+***warning
+Please awareness about CORS
+and this case I don't setup get OS because maybe a hard to setup however it can use `viper` or `os.GetEnv("XXX")` to useable
